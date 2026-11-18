@@ -89,6 +89,12 @@ public class Cliente {
                     case "END":
                         mostrarFin(resto);
                         break;
+                    case "HIST":
+                        System.out.println("Historial de la ronda: " + resto.replace(";", "  "));
+                        break;
+                    case "REMATCH":
+                        System.out.println("El rival propone revancha. Escribe REVANCHA para aceptar o SALIR.");
+                        break;
                     case "LEFT":
                         System.out.println("El rival se ha desconectado. Fin.");
                         break;

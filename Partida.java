@@ -1,5 +1,13 @@
 package Juego;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 /**
  * Estado y reglas de UNA partida. Todos los métodos públicos son synchronized:
@@ -16,6 +24,7 @@ public class Partida {
     private final Jugador[] jugadores = new Jugador[2];
     private final boolean[] quiereRevancha = new boolean[2];
     private final char[] tablero = new char[9];
+    private final List<String> historial = new ArrayList<>(); // jugadas de la ronda, p. ej. "X:1,1"
     private int numJugadores = 0;
     private int partidasJugadas = 0;
     private char turno = 'X';
@@ -77,6 +86,8 @@ public class Partida {
         if (rival != null) {
             if (enJuego) {
                 rival.enviar("END WIN " + rival.marca + " ABANDONO");
+                rival.enviar("HIST " + historialTexto());
+                guardarHistorial("Gana " + rival.nombre + " (" + rival.marca + ") por abandono de " + j.nombre);
             } else {
                 rival.enviar("LEFT");
             }
@@ -91,6 +102,7 @@ public class Partida {
     private void iniciar() {
         Arrays.fill(tablero, '.');
         Arrays.fill(quiereRevancha, false);
+        historial.clear();
         turno = (partidasJugadas % 2 == 0) ? 'X' : 'O'; // en cada revancha empieza el otro
         partidasJugadas++;
         enJuego = true;
@@ -140,17 +152,20 @@ public class Partida {
         }
 
         tablero[idx] = j.marca;
+        historial.add(j.marca + ":" + fila + "," + col);
         broadcast("OK " + new String(tablero));
 
         if (hayGanador(j.marca)) {
             enJuego = false;
             terminada = true;
             broadcast("END WIN " + j.marca);
+            publicarHistorial("Gana " + j.nombre + " (" + j.marca + ")");
             System.out.println("[Partida] Gana " + j.nombre + " (" + j.marca + ")");
         } else if (tableroLleno()) {
             enJuego = false;
             terminada = true;
             broadcast("END DRAW -");
+            publicarHistorial("Empate");
             System.out.println("[Partida] Empate");
         } else {
             turno = (turno == 'X') ? 'O' : 'X';
@@ -168,6 +183,42 @@ public class Partida {
             iniciar();
         } else {
             j.enviar("WAIT"); // esperando a que el rival decida
+            Jugador rival = rivalDe(j);
+            if (rival != null) {
+                rival.enviar("REMATCH"); // avisa al rival de que se le propone revancha
+            }
+        }
+    }
+
+    private String historialTexto() {
+        return historial.isEmpty() ? "-" : String.join(";", historial);
+    }
+
+    /** Envia el historial de la ronda a ambos jugadores (HIST) y lo guarda en un fichero. */
+    private void publicarHistorial(String resultado) {
+        broadcast("HIST " + historialTexto());
+        guardarHistorial(resultado);
+    }
+
+    private void guardarHistorial(String resultado) {
+        if (historial.isEmpty()) {
+            return;
+        }
+        String ts = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+        Path fichero = Path.of("historial_" + ts + "_ronda" + partidasJugadas + ".txt");
+        List<String> lineas = new ArrayList<>();
+        lineas.add("Ronda " + partidasJugadas + ": " + jugadores[0].nombre + " vs " + jugadores[1].nombre);
+        for (int i = 0; i < historial.size(); i++) {
+            String[] m = historial.get(i).split(":");
+            Jugador autor = jugadores[0].marca == m[0].charAt(0) ? jugadores[0] : jugadores[1];
+            lineas.add((i + 1) + ". " + autor.nombre + " (" + m[0] + ") -> fila,col " + m[1]);
+        }
+        lineas.add("Resultado: " + resultado);
+        try {
+            Files.write(fichero, lineas, StandardCharsets.UTF_8);
+            System.out.println("[Partida] Historial guardado en " + fichero);
+        } catch (IOException e) {
+            System.err.println("[Partida] No se pudo guardar el historial: " + e.getMessage());
         }
     }
 

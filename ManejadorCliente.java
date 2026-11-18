@@ -36,7 +36,13 @@ public class ManejadorCliente implements Runnable {
             jugador = new Jugador(nombre, socket);
             partida = Servidor.partidaActual();
 
-            if (!partida.unir(jugador)) {
+            boolean admitido = partida.unir(jugador);
+            if (!admitido) {
+                // la partida anterior pudo cerrarse justo ahora: se reintenta una vez con la vigente
+                partida = Servidor.partidaActual();
+                admitido = partida.unir(jugador);
+            }
+            if (!admitido) {
                 jugador.enviar("FULL");
                 System.out.println("[Servidor] Rechazado " + nombre + ": partida llena");
                 return; // el finally cierra el socket
